@@ -1,9 +1,3 @@
 __pycache__/
-dist/
-build/
-archive/
-audio_validation.spec
-audio_validation.exe.lnk
-*.xlsx
-*.zip
-*.tar.gz
+input/
+trimmed/
