@@ -7,7 +7,6 @@ import soundfile as sf
 import numpy as np
 from pydub import AudioSegment,silence
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 ap = argparse.ArgumentParser(description = 
@@ -43,7 +42,6 @@ if os.path.isfile(args.i):
 else:
   in_wavs = glob(os.path.join(args.i, '*.wav'))
 
-print('\nPrirez zvočnih posnetkov:\n')
 for wav in in_wavs:
   print('\nVhodni posnetek: %s'%wav)
 
