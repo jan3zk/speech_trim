@@ -5,12 +5,13 @@ import os
 import argparse
 import soundfile as sf
 import numpy as np
-import matplotlib.pyplot as plt
 from pydub import AudioSegment,silence
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 ap = argparse.ArgumentParser(description = 
-'Skripta za obrezanje začetnih in končnih premorov v govornih datotekah tipa WAW.')
+'Skripta za prirez začetnih in končnih premorov v govornih datotekah tipa WAW.')
 ap._action_groups.pop()
 required = ap.add_argument_group('required arguments')
 optional = ap.add_argument_group('optional arguments')
@@ -42,9 +43,9 @@ if os.path.isfile(args.i):
 else:
   in_wavs = glob(os.path.join(args.i, '*.wav'))
 
-print('Obrezovnje zvočnih posnetkov:')
+print('\nPrirez zvočnih posnetkov:\n')
 for wav in in_wavs:
-  print(wav)
+  print('\nVhodni posnetek: %s'%wav)
 
   speech = AudioSegment.from_file(wav)
   t_ini_v = silence.detect_leading_silence(speech, silence_threshold=args.t, chunk_size=args.c)
@@ -56,12 +57,20 @@ for wav in in_wavs:
     out_path = args.o
   else:
     out_path = os.path.join(args.o,os.path.basename(wav))
-
+  print('Prirezani posnetek: %s'%out_path)
+  
   data, rate = sf.read(wav)
   t_end = len(data)/rate
   leading_trim = t_ini-args.p if t_ini-args.p > 0 else 0
   trailing_trim = t_fin-args.p if t_fin-args.p > 0 else 0
-  sf.write(out_path, data[int((leading_trim)*rate):int((t_end-trailing_trim)*rate)], rate) 
+  sf.write(out_path, data[int((leading_trim)*rate):int((t_end-trailing_trim)*rate)], rate)
+  
+  print('Ocenjen začetni premor: %.1f'%t_ini)
+  print('Ocenjen končni premor: %.1f'%t_fin)
+  print('Dolžina začetnega obreza: %.1f s'%leading_trim)
+  print('Dolžina končnega obreza: %.1f s'%trailing_trim)
+  if t_ini < 0.5: print('\tPOZOR: Premajhen začetni premor.')
+  if t_fin < 0.5: print('\tPOZOR: Premajhen končni premor.')
   
   if args.v:
     fig, ax = plt.subplots()
