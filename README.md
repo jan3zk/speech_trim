@@ -14,4 +14,9 @@ Prirez večih posnetkov naenkrat je mogoč s klicem ```python speech_trim.py -i 
 
 ### Opcijski vhodni argumenti
 
-Argument ```-v``` omogoča vkjučitev izrisa grafa glasnosti obravnavanega govornega posnetka. Z argumentom ```-p <float>``` nastavimo želeno dolžino začetnega/končnega premora, pri čemer je ```<float>``` decimalna vrednost v sekundah (prednastavljena vrednost je ```0,8```). Argument ```-t <int>``` omogoča nastavitev pragu tišine v dBFS (prednastavljena vrednost ```-34```). Z ```-c <int>``` pa lahko nastavimo dolžino odseka v ms znotraj katerega postopek po korakih išče začetek/konec govora (prednastavljena vrednost ```20```).
+* ```-v``` vkjučitev izrisa grafa glasnosti obravnavanega govornega posnetka.
+* ```-a <int>``` stopnja filtriranje negovornih odsekov (celoštevilska vrendnosti med 0 in 3, prednastavljeno 3).
+* ```-d <float>``` minimalna dolžina govornega signala v sekundah (prednastavljeno 1,5 s).
+* ```-p <float>``` želena dolžina začetnega/končnega premora, pri čemer je ```<float>``` decimalna vrednost v sekundah (prednastavljena vrednost je ```0,8```)
+* ```-t <int>``` pragu tišine v dBFS (prednastavljena vrednost ```-34```). 
+* ```-c <int>``` dolžina odseka v ms znotraj katerega postopek po korakih išče začetek/konec govora (prednastavljena vrednost ```20```).
