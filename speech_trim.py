@@ -123,74 +123,7 @@ def vad_collector(sample_rate, frame_duration_ms,
       t_fins.append(frame.timestamp + frame.duration)
   yield (t_inis, t_fins)
 
-def main():
-  if os.path.isfile(args.i):
-    in_wavs = [args.i]
-  else:
-    in_wavs = glob(os.path.join(args.i, '*.wav'))
-  for wav in in_wavs:
-    print('\nVhodni posnetek: %s'%wav)
-    # Find approximate lenghts of initial and final silence
-    y, sr = librosa.load(wav, sr=32000)
-    sf.write('tmp.wav', y, sr)
-    audio, sample_rate = read_wave('tmp.wav')
-    os.remove('tmp.wav') 
-    vad = webrtcvad.Vad(int(args.a))
-    frames = frame_generator(30, audio, sample_rate)
-    frames = list(frames)
-    segments = vad_collector(sample_rate, 30, 300, vad, frames)
-    for i, segment in enumerate(segments):
-      vad_timings = np.array(segment[1]) - np.array(segment[0]) > args.d
-      t_ini = segment[0][next((i for i, j in enumerate(vad_timings) if j), np.argmax(np.array(segment[1]) - np.array(segment[0])))]
-      t_fin = segment[1][len(segment[1])-1-next((i for i, j in enumerate(vad_timings[::-1]) if j), np.argmax(np.array(segment[1]) - np.array(segment[0])))]
-    data, rate = sf.read(wav)
-    t_end = len(data)/rate
-    t_fin = t_end - t_fin
-    # Find precise lenghts of initial and final silence
-    speech = AudioSegment.from_file(wav)
-    t_ini_v = silence.detect_leading_silence(speech[t_ini*1000:], silence_threshold=args.t, chunk_size=args.c)
-    t_ini = t_ini + t_ini_v/1000
-    t_fin_v = silence.detect_leading_silence(speech.reverse()[t_fin*1000:], silence_threshold=args.t, chunk_size=args.c)
-    t_fin = t_fin + t_fin_v/1000
-    if os.path.isfile(args.o):
-      out_path = args.o
-    else:
-      out_path = os.path.join(args.o,os.path.basename(wav))
-    print('Prirezani posnetek: %s'%out_path)
-    leading_trim = t_ini-args.p if t_ini-args.p > 0 else 0
-    trailing_trim = t_fin-args.p if t_fin-args.p > 0 else 0
-    sf.write(out_path, data[int((leading_trim)*rate):int((t_end-trailing_trim)*rate)], rate)
-    print('Ocenjen začetni premor: %.1f'%t_ini)
-    print('Ocenjen končni premor: %.1f'%t_fin)
-    print('Dolžina začetnega obreza: %.1f s'%leading_trim)
-    print('Dolžina končnega obreza: %.1f s'%trailing_trim)
-    if t_ini < 0.5: print('\tPOZOR: Premajhen začetni premor.')
-    if t_fin < 0.5: print('\tPOZOR: Premajhen končni premor.')
-    # Plot signal and detected silence
-    if args.v:
-      fig, ax = plt.subplots()
-      plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
-        data[:int(t_ini*rate)], 'r')
-      plt.plot( np.linspace(t_ini,t_end-t_fin,
-        len(data[int(t_ini*rate):int((t_end-t_fin)*rate)])),
-        data[int(t_ini*rate):int((t_end-t_fin)*rate)], 'g')
-      plt.plot( np.linspace(t_end-t_fin,t_end,
-        len(data[int((t_end-t_fin)*rate):])),
-        data[int((t_end-t_fin)*rate):], 'r')
-      plt.axvspan(0, .5, facecolor='r', alpha=.3)
-      plt.axvspan(t_end, t_end-.5, facecolor='r', alpha=.3)
-      plt.axvspan(1, t_end-1, facecolor='g', alpha=.3)
-      plt.axhline(y=.5, color='k', linestyle='--')
-      plt.axhline(y=-.5, color='k', linestyle='--')
-      plt.ylim([-1, 1])
-      plt.xlim(0,t_end)
-      plt.xlabel('Čas [s]')
-      plt.ylabel('Amplituda')
-      ax.set_title('Začetni premor: %.2f s, končni premor: %.2f s'%(t_ini, t_fin))
-      plt.show()
-
-
-if __name__ == '__main__':
+def speech_trim(raw_args=None):
   ap = argparse.ArgumentParser(description = 
   'Skripta za prirez začetnih in končnih premorov v govornih datotekah tipa WAW.')
   ap._action_groups.pop()
@@ -199,7 +132,7 @@ if __name__ == '__main__':
   required.add_argument('-i',
     type = str,
     help = 'Vhodna datoteka ali direktorij s posnetki WAV.')
-  required.add_argument('-o',
+  optional.add_argument('-o',
     type = str,
     help = 'Izhodna datoteka ali direktorij s posnetki WAV.')
   optional.add_argument('-v', 
@@ -221,10 +154,97 @@ if __name__ == '__main__':
     type=int,
     default=3,
     help = 'Stopnja filtriranje negovornih odsekov (vrendnost med 0 in 3).')
+  optional.add_argument('-m', 
+    type=float,
+    default=0.5,
+    help = 'Največja dovoljena dolžina vmesnega premora znotraj govornega odseka.')
   optional.add_argument('-d', 
-    type=int,
-    default=1.5,
+    type=float,
+    default=1.0,
     help = 'Minimalna dolžina govornega signala.')
-  args = ap.parse_args()
+  args = ap.parse_args(raw_args)
+  
+  if os.path.isfile(args.i):
+    in_wavs = [args.i]
+  else:
+    in_wavs = glob(os.path.join(args.i, '*.wav'))
+  tini = []
+  tfin = []
+  for wav in in_wavs:
+    # Find approximate lenghts of initial and final silence
+    y, sr = librosa.load(wav, sr=32000)
+    sf.write('tmp.wav', y, sr)
+    audio, sample_rate = read_wave('tmp.wav')
+    os.remove('tmp.wav') 
+    vad = webrtcvad.Vad(int(args.a))
+    frames = frame_generator(30, audio, sample_rate)
+    frames = list(frames)
+    segments = vad_collector(sample_rate, 30, 300, vad, frames)
+    for i, segment in enumerate(segments):
+      vad_timings = np.array(segment[1]) - np.array(segment[0])# > args.d
+      max_len = np.argmax(np.array(segment[1]) - np.array(segment[0]))
+      t_ini = segment[0][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
+      t_fin = segment[1][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
+      for right_sec in range(max_len+1,len(segment[0])):
+        if (segment[0][right_sec] - segment[1][right_sec-1]) < args.m and vad_timings[right_sec] > args.d:
+          t_fin = segment[1][right_sec]
+      for left_sec in range(max_len,0,-1):
+        if (segment[0][left_sec] - segment[1][left_sec-1]) < args.m and vad_timings[left_sec] > args.d:
+          t_ini = segment[0][left_sec-1]
+    data, rate = sf.read(wav)
+    t_end = len(data)/rate
+    t_fin = t_end - t_fin
+    # Find precise lenghts of initial and final silence
+    speech = AudioSegment.from_file(wav)
+    t_ini_v = silence.detect_leading_silence(speech[t_ini*1000:], silence_threshold=args.t, chunk_size=args.c)
+    t_ini = t_ini + t_ini_v/1000
+    t_fin_v = silence.detect_leading_silence(speech.reverse()[t_fin*1000:], silence_threshold=args.t, chunk_size=args.c)
+    t_fin = t_fin + t_fin_v/1000
+    leading_trim = t_ini-args.p if t_ini-args.p > 0 else 0
+    trailing_trim = t_fin-args.p if t_fin-args.p > 0 else 0
+    if args.o:
+      if os.path.isfile(args.o):
+        out_path = args.o
+      else:
+        out_path = os.path.join(args.o,os.path.basename(wav))
+      print('Prirezani posnetek: %s'%out_path)
+      sf.write(out_path, data[int((leading_trim)*rate):int((t_end-trailing_trim)*rate)], rate)
+    # Plot signal and detected silence
+    if args.v:
+      print('\nVhodni posnetek: %s'%wav)
+      print('Ocenjen začetni premor: %.1f'%t_ini)
+      print('Ocenjen končni premor: %.1f'%t_fin)
+      print('Dolžina začetnega obreza: %.1f s'%leading_trim)
+      print('Dolžina končnega obreza: %.1f s'%trailing_trim)
+      if t_ini < 0.5: print('\tPOZOR: Premajhen začetni premor.')
+      if t_fin < 0.5: print('\tPOZOR: Premajhen končni premor.')
+      fig, ax = plt.subplots()
+      plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
+        data[:int(t_ini*rate)], 'r')
+      plt.plot( np.linspace(t_ini,t_end-t_fin,
+        len(data[int(t_ini*rate):int((t_end-t_fin)*rate)])),
+        data[int(t_ini*rate):int((t_end-t_fin)*rate)], 'g')
+      plt.plot( np.linspace(t_end-t_fin,t_end,
+        len(data[int((t_end-t_fin)*rate):])),
+        data[int((t_end-t_fin)*rate):], 'r')
+      plt.axvspan(0, .5, facecolor='r', alpha=.3)
+      plt.axvspan(t_end, t_end-.5, facecolor='r', alpha=.3)
+      plt.axvspan(1, t_end-1, facecolor='g', alpha=.3)
+      plt.axhline(y=.5, color='k', linestyle='--')
+      plt.axhline(y=-.5, color='k', linestyle='--')
+      plt.ylim([-1, 1])
+      plt.xlim(0,t_end)
+      plt.xlabel('Čas [s]')
+      plt.ylabel('Amplituda')
+      ax.set_title('Začetni premor: %.2f s, končni premor: %.2f s'%(t_ini, t_fin))
+      plt.show()
+    tini.append(t_ini)
+    tfin.append(t_fin)
+  if len(tini) == 1:
+    tini = tini[0]
+    tfin = tfin[0]
+  return (tini, tfin)
 
-  main()
+if __name__ == '__main__':
+
+  speech_trim()
