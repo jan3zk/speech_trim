@@ -140,11 +140,11 @@ def speech_trim(raw_args=None):
     help = 'Argument s katerim vključimo izpis na konzolo.')
   optional.add_argument('-p', 
     type=float,
-    default=0.8,
+    default=0.75,
     help = 'Dolžina premora v sekundah.')
   optional.add_argument('-t', 
     type=int,
-    default=-36,
+    default=-35,
     help = 'Prag tišine v dbFS.')
   optional.add_argument('-c', 
     type=int,
