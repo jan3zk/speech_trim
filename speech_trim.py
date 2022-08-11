@@ -279,7 +279,6 @@ def speech_trim(raw_args=None):
 
     # Plot signal and detected silence
     if args.v:
-      # ~ fig = plt.figure()
       ax = plt.subplot(211)
       plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
         data[:int(t_ini*rate)], 'r')
@@ -313,8 +312,8 @@ def speech_trim(raw_args=None):
       ax2.set_title('Spektrogram')
       plt.tight_layout()
       fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+      plt.show()
       fig.clf()
-      # ~ plt.show()
 
     tini.append(t_ini)
     tfin.append(t_fin)

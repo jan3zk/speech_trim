@@ -14,9 +14,10 @@ Prirez večih posnetkov naenkrat je mogoč s klicem ```python speech_trim.py -i 
 
 ### Opcijski vhodni argumenti
 
-* ```-v``` vkjučitev izrisa grafa glasnosti obravnavanega govornega posnetka.
-* ```-a <int>``` stopnja filtriranje negovornih odsekov (celoštevilska vrendnosti med 0 in 3, prednastavljeno 3).
-* ```-d <float>``` minimalna dolžina govornega signala v sekundah (prednastavljeno 1,0 s).
-* ```-p <float>``` želena dolžina začetnega/končnega premora, pri čemer je ```<float>``` decimalna vrednost v sekundah (prednastavljena vrednost je ```0,75```)
-* ```-t <int>``` pragu tišine v dBFS (prednastavljena vrednost ```-35```). 
-* ```-c <int>``` dolžina odseka v ms znotraj katerega postopek po korakih išče začetek/konec govora (prednastavljena vrednost ```75```).
+* ```-v``` Vkjučitev izrisa grafa glasnosti obravnavanega govornega posnetka.
+* ```-a <int>``` Stopnja filtriranje negovornih odsekov (celoštevilska vrendnosti med 0 in 3, prednastavljeno 3).
+* ```-d <float>``` Minimalna dolžina govornega signala v sekundah (prednastavljeno 1,0 s).
+* ```-p <float>``` Želena dolžina začetnega/končnega premora, pri čemer je ```<float>``` decimalna vrednost v sekundah (prednastavljena vrednost je ```0.75```)
+* ```-t <int>``` Pragu tišine v dBFS (prednastavljena vrednost ```-35```). 
+* ```-c <int>``` Dolžina odseka v ms znotraj katerega postopek po korakih išče začetek/konec govora (prednastavljena vrednost ```75```).
+* ```-z``` Zapolni prekratke premore s šumom ozadja.
