@@ -71,6 +71,36 @@ def frame_generator(frame_duration_ms, audio, sample_rate):
     timestamp += duration
     offset += n
 
+def initial_final_pauses(wav, aa, am, ad, at, ac):
+  y, sr = librosa.load(wav, sr=32000)
+  sf.write('tmp.wav', y, sr)
+  audio, sample_rate = read_wave('tmp.wav')
+  os.remove('tmp.wav') 
+  vad = webrtcvad.Vad(int(aa))
+  frames = frame_generator(30, audio, sample_rate)
+  frames = list(frames)
+  segments = vad_collector(sample_rate, 30, 300, vad, frames)
+  for i, segment in enumerate(segments):
+    vad_timings = np.array(segment[1]) - np.array(segment[0])
+    max_len = np.argmax(np.array(segment[1]) - np.array(segment[0]))
+    t_ini = segment[0][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
+    t_fini = segment[1][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
+    for right_sec in range(max_len+1,len(segment[0])):
+      if (segment[0][right_sec] - segment[1][right_sec-1]) < am and vad_timings[right_sec] > ad:
+        t_fini = segment[1][right_sec]
+    for left_sec in range(max_len,0,-1):
+      if (segment[0][left_sec] - segment[1][left_sec-1]) < am and vad_timings[left_sec] > ad:
+        t_ini = segment[0][left_sec-1]
+  data, rate = sf.read(wav)
+  t_end = len(data)/rate
+  t_fin = t_end - t_fini
+  # Find precise lenghts of initial and final silence
+  speech = AudioSegment.from_file(wav)
+  t_ini_v = silence.detect_leading_silence(speech[t_ini*1000:], silence_threshold=at, chunk_size=ac)
+  t_ini = t_ini + t_ini_v/1000
+  t_fin_v = silence.detect_leading_silence(speech.reverse()[t_fin*1000:], silence_threshold=at, chunk_size=ac)
+  t_fin = t_fin + t_fin_v/1000
+  return (t_ini, t_fin)
 
 def vad_collector(sample_rate, frame_duration_ms,
                   padding_duration_ms, vad, frames):
@@ -196,43 +226,14 @@ def speech_trim(raw_args=None):
     t_ini_added = 0
     t_fin_added = 0
     print("\n(%i/%i)"%(c+args.s, len(in_wavs)))
-    # Find approximate lenghts of initial and final silence
-    y, sr = librosa.load(wav, sr=32000)
-    bgrnd = AudioSegment.from_file(wav)
-    sf.write('tmp.wav', y, sr)
-    audio, sample_rate = read_wave('tmp.wav')
-    os.remove('tmp.wav') 
-    vad = webrtcvad.Vad(int(args.a))
-    frames = frame_generator(30, audio, sample_rate)
-    frames = list(frames)
-    segments = vad_collector(sample_rate, 30, 300, vad, frames)
-    for i, segment in enumerate(segments):
-      vad_timings = np.array(segment[1]) - np.array(segment[0])
-      max_len = np.argmax(np.array(segment[1]) - np.array(segment[0]))
-      t_ini = segment[0][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
-      t_fini = segment[1][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
-      for right_sec in range(max_len+1,len(segment[0])):
-        if (segment[0][right_sec] - segment[1][right_sec-1]) < args.m and vad_timings[right_sec] > args.d:
-          t_fini = segment[1][right_sec]
-      for left_sec in range(max_len,0,-1):
-        if (segment[0][left_sec] - segment[1][left_sec-1]) < args.m and vad_timings[left_sec] > args.d:
-          t_ini = segment[0][left_sec-1]
-    data, rate = sf.read(wav)
-    t_end = len(data)/rate
-    t_fin = t_end - t_fini
-    
-    # Find precise lenghts of initial and final silence
-    speech = AudioSegment.from_file(wav)
-    t_ini_v = silence.detect_leading_silence(speech[t_ini*1000:], silence_threshold=args.t, chunk_size=args.c)
-    t_ini = t_ini + t_ini_v/1000
-    t_fin_v = silence.detect_leading_silence(speech.reverse()[t_fin*1000:], silence_threshold=args.t, chunk_size=args.c)
-    t_fin = t_fin + t_fin_v/1000
-    
+    t_ini, t_fin = initial_final_pauses(wav, args.a, args.m, args.d, args.t, args.c)
     print('\nVhodni posnetek: %s'%wav)
     print('Ocenjen začetni premor: %.1f'%t_ini)
     print('Ocenjen končni premor: %.1f'%t_fin)
-    
+    data, rate = sf.read(wav)
+
     if args.z:
+      bgrnd = AudioSegment.from_file(wav)
       if any(np.array([bgrnd_all.duration_seconds, t_ini, t_fin]) < 0.1):
         bgrnd_all = bgrnd_all + bgrnd[:int(t_ini*1000*0.5)]
         bgrnd_all = bgrnd_all + bgrnd[-int(t_fin*1000*0.5):]
@@ -244,37 +245,39 @@ def speech_trim(raw_args=None):
       t_end_chunk = len(bgrnd_chunk)/rate
       if t_ini < 0.5:
         t_rand_ini = random.uniform(0,t_end_chunk-args.p+t_ini)
+        if t_rand_ini < 0: t_rand_ini = 0
         bgrnd_chunk_ini = bgrnd_chunk[int(t_rand_ini*rate):int((t_rand_ini+args.p-t_ini)*rate)]
         data = np.concatenate((bgrnd_chunk_ini, data))
         t_ini_added = args.p-t_ini
         print('\tPOZOR: Premajhen začetni premor. Dodanega %.2f s šuma na začetek posnetka.'%t_ini_added)
-        t_ini = args.p
+        # ~ t_ini = args.p
       if t_fin < 0.5:
         t_rand_fin = random.uniform(0,t_end_chunk-args.p+t_fin)
+        if t_rand_fin < 0: t_rand_fin = 0 
         bgrnd_chunk_fin = bgrnd_chunk[int(t_rand_fin*rate):int((t_rand_fin+args.p-t_fin)*rate)]
         data = np.concatenate((data, bgrnd_chunk_fin))
         t_fin_added = args.p-t_fin
         print('\tPOZOR: Premajhen končni premor. Dodanega %.2f s šuma na konec posnetka.'%t_fin_added)
-        t_fin = args.p
+        # ~ t_fin = args.p
       
       # Recompute the precise final length on the extended signal
-      t_end = len(data)/rate
-      t_fin = t_end - t_fini
-      t_fin_v = silence.detect_leading_silence(speech.reverse()[t_fin*1000:], silence_threshold=args.t, chunk_size=args.c)
-      t_fin = t_fin + t_fin_v/1000
-      
+      sf.write('tmp_mod.wav', data, rate)
+      t_ini, t_fin = initial_final_pauses('tmp_mod.wav', args.a, args.m, args.d, args.t, args.c)
+      os.remove('tmp_mod.wav')
+    
     leading_trim = t_ini-args.p if t_ini-args.p > 0 else 0
     trailing_trim = t_fin-args.p if t_fin-args.p > 0 else 0
+    t_end = len(data)/rate
     
     print('Dolžina začetnega obreza: %.1f s'%leading_trim)
     print('Dolžina končnega obreza: %.1f s'%trailing_trim)
 
     if args.o:
-      if os.path.isfile(args.o):
-        out_path = args.o
-      else:
+      if os.path.isdir(args.o):
         out_path = os.path.join(args.o,os.path.basename(wav))
-      print('Prirezani posnetek shranjen kot: %s'%out_path)
+      else:
+        out_path = args.o
+      print('Prirezani posnetek shranjen v: %s'%out_path)
       sf.write(out_path, data[int(leading_trim*rate):int((t_end-trailing_trim)*rate)], rate)
 
     # Plot signal and detected silence
@@ -299,7 +302,6 @@ def speech_trim(raw_args=None):
       plt.xlim(0,t_end)
       plt.xlabel('Čas [s]')
       plt.ylabel('Amplituda')
-      #ax.set_title('Začetni premor: %.2f s, končni premor: %.2f s'%(t_ini, t_fin))
       ax.set_title('Dodano %.2f s šuma na začetku in %.2f s na koncu posnetka.'%(t_ini_added, t_fin_added))
       ax2 = plt.subplot(212)
       if data.ndim > 1:
@@ -311,9 +313,12 @@ def speech_trim(raw_args=None):
       plt.ylabel('Frekvenca [Hz]')
       ax2.set_title('Spektrogram')
       plt.tight_layout()
-      fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+      if args.o:
+        if os.path.isdir(args.o):
+          fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+        else:
+          fig.savefig(os.path.join(os.path.basename(args.o)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
       plt.show()
-      fig.clf()
 
     tini.append(t_ini)
     tfin.append(t_fin)
