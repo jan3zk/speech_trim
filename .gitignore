@@ -4,3 +4,5 @@ dist/
 speech_trim
 speech_trim.spec
 *.zip
+*.exe
+*.lnk

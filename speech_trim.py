@@ -15,6 +15,7 @@ import wave
 import webrtcvad
 import collections
 import random
+import shutil
 
 
 def read_wave(path):
@@ -72,6 +73,8 @@ def frame_generator(frame_duration_ms, audio, sample_rate):
     offset += n
 
 def initial_final_pauses(wav, aa, am, ad, at, ac):
+  data, rate = sf.read(wav)
+  t_end = len(data)/rate
   y, sr = librosa.load(wav, sr=32000)
   sf.write('tmp.wav', y, sr)
   audio, sample_rate = read_wave('tmp.wav')
@@ -82,18 +85,20 @@ def initial_final_pauses(wav, aa, am, ad, at, ac):
   segments = vad_collector(sample_rate, 30, 300, vad, frames)
   for i, segment in enumerate(segments):
     vad_timings = np.array(segment[1]) - np.array(segment[0])
-    max_len = np.argmax(np.array(segment[1]) - np.array(segment[0]))
-    t_ini = segment[0][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
-    t_fini = segment[1][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
-    for right_sec in range(max_len+1,len(segment[0])):
-      if (segment[0][right_sec] - segment[1][right_sec-1]) < am and vad_timings[right_sec] > ad:
-        t_fini = segment[1][right_sec]
-    for left_sec in range(max_len,0,-1):
-      if (segment[0][left_sec] - segment[1][left_sec-1]) < am and vad_timings[left_sec] > ad:
-        t_ini = segment[0][left_sec-1]
-  data, rate = sf.read(wav)
-  t_end = len(data)/rate
-  t_fin = t_end - t_fini
+    if not all(segment):
+      t_ini = 0.2
+      t_fin = 0.2
+    else:
+      max_len = np.argmax(np.array(segment[1]) - np.array(segment[0]))
+      t_ini = segment[0][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
+      t_fini = segment[1][np.argmax(np.array(segment[1]) - np.array(segment[0]))]
+      for right_sec in range(max_len+1,len(segment[0])):
+        if (segment[0][right_sec] - segment[1][right_sec-1]) < am and vad_timings[right_sec] > ad:
+          t_fini = segment[1][right_sec]
+      for left_sec in range(max_len,0,-1):
+        if (segment[0][left_sec] - segment[1][left_sec-1]) < am and vad_timings[left_sec] > ad:
+          t_ini = segment[0][left_sec-1]
+      t_fin = t_end - t_fini
   # Find precise lenghts of initial and final silence
   speech = AudioSegment.from_file(wav)
   t_ini_v = silence.detect_leading_silence(speech[t_ini*1000:], silence_threshold=at, chunk_size=ac)
@@ -191,7 +196,7 @@ def speech_trim(raw_args=None):
     help = 'Odsek procesiranja v ms.')
   optional.add_argument('-a', 
     type=int,
-    default=3,
+    default=2,
     help = 'Stopnja filtriranje negovornih odsekov (vrendnost med 0 in 3).')
   optional.add_argument('-m', 
     type=float,
@@ -216,15 +221,15 @@ def speech_trim(raw_args=None):
     in_wavs = [args.i]
   else:
     in_wavs = sorted(glob(os.path.join(args.i, '*.wav')))
-  bgrnd_all = AudioSegment.empty()
+  # ~ bgrnd_all = AudioSegment.empty()
   tini = []
   tfin = []
-  if args.v:
-    fig = plt.figure()
+  
+  fig = plt.figure()
     
   for c,wav in enumerate(in_wavs[args.s-1:]):
-    t_ini_added = 0
-    t_fin_added = 0
+    lead_add = 0
+    trail_add = 0
     print("\n(%i/%i)"%(c+args.s, len(in_wavs)))
     t_ini, t_fin = initial_final_pauses(wav, args.a, args.m, args.d, args.t, args.c)
     print('\nVhodni posnetek: %s'%wav)
@@ -234,91 +239,114 @@ def speech_trim(raw_args=None):
 
     if args.z:
       bgrnd = AudioSegment.from_file(wav)
-      if any(np.array([bgrnd_all.duration_seconds, t_ini, t_fin]) < 0.1):
-        bgrnd_all = bgrnd_all + bgrnd[:int(t_ini*1000*0.5)]
-        bgrnd_all = bgrnd_all + bgrnd[-int(t_fin*1000*0.5):]
-      else:
-        bgrnd_all = bgrnd_all.append(bgrnd[:int(t_ini*1000*0.5)])
-        bgrnd_all = bgrnd_all.append(bgrnd[-int(t_fin*1000*0.5):])
+
+      bgrnd_ini = bgrnd[:int(t_ini*1000*0.5)]
+      bgrnd_fin = bgrnd[-int(t_fin*1000*0.5):]
+      bgrnda = bgrnd_ini.append(bgrnd_fin, crossfade=min([len(bgrnd_ini)/3, len(bgrnd_fin)/3, 100]))
+      bgrnd_all = AudioSegment.empty()
+
+      trim_ms = 0
+      while trim_ms < len(bgrnda):
+        if bgrnda[trim_ms:trim_ms+10].dBFS < args.t*1.2:
+          bgrnd_all = bgrnd_all + bgrnda[trim_ms:trim_ms+10]
+        trim_ms += 10
+      while len(bgrnd_all)/1000 < args.p:
+        bgrnd_all = bgrnd_all.append(bgrnd_all, crossfade=min([len(bgrnd_all)*0.75, 100]))
+
       bgrnd_chunk = np.array(bgrnd_all.get_array_of_samples(), dtype=float)
       bgrnd_chunk = bgrnd_chunk/bgrnd_all.max_possible_amplitude
       t_end_chunk = len(bgrnd_chunk)/rate
+
       if t_ini < 0.5:
         t_rand_ini = random.uniform(0,t_end_chunk-args.p+t_ini)
         if t_rand_ini < 0: t_rand_ini = 0
         bgrnd_chunk_ini = bgrnd_chunk[int(t_rand_ini*rate):int((t_rand_ini+args.p-t_ini)*rate)]
         data = np.concatenate((bgrnd_chunk_ini, data))
-        t_ini_added = args.p-t_ini
-        print('\tPOZOR: Premajhen začetni premor. Dodanega %.2f s šuma na začetek posnetka.'%t_ini_added)
-        # ~ t_ini = args.p
+        lead_add = args.p-t_ini
+        print('Premajhen začetni premor. Dodanega %.2f s šuma na začetek posnetka.'%lead_add)
+
       if t_fin < 0.5:
         t_rand_fin = random.uniform(0,t_end_chunk-args.p+t_fin)
         if t_rand_fin < 0: t_rand_fin = 0 
         bgrnd_chunk_fin = bgrnd_chunk[int(t_rand_fin*rate):int((t_rand_fin+args.p-t_fin)*rate)]
         data = np.concatenate((data, bgrnd_chunk_fin))
-        t_fin_added = args.p-t_fin
-        print('\tPOZOR: Premajhen končni premor. Dodanega %.2f s šuma na konec posnetka.'%t_fin_added)
-        # ~ t_fin = args.p
-      
+        trail_add = args.p-t_fin
+        print('Premajhen končni premor. Dodanega %.2f s šuma na konec posnetka.'%trail_add)
+
       # Recompute the precise final length on the extended signal
       sf.write('tmp_mod.wav', data, rate)
       t_ini, t_fin = initial_final_pauses('tmp_mod.wav', args.a, args.m, args.d, args.t, args.c)
       os.remove('tmp_mod.wav')
-    
-    leading_trim = t_ini-args.p if t_ini-args.p > 0 else 0
-    trailing_trim = t_fin-args.p if t_fin-args.p > 0 else 0
+
+    lead_trim = t_ini-args.p if t_ini-args.p > 0 else 0
+    trail_trim = t_fin-args.p if t_fin-args.p > 0 else 0
+    if lead_trim < lead_add:
+      lead_trim = 0
+    else:
+      lead_add = 0
+    if trail_trim < trail_add:
+      trail_trim = 0
+    else:
+      trail_add = 0
+      
     t_end = len(data)/rate
     
-    print('Dolžina začetnega obreza: %.1f s'%leading_trim)
-    print('Dolžina končnega obreza: %.1f s'%trailing_trim)
+    print('Dolžina začetnega obreza: %.1f s'%lead_trim)
+    print('Dolžina končnega obreza: %.1f s'%trail_trim)
 
     if args.o:
-      if os.path.isdir(args.o):
-        out_path = os.path.join(args.o,os.path.basename(wav))
+      if any(np.array([lead_add, trail_add, lead_trim, trail_trim])>0):
+        if os.path.isdir(args.o):
+          out_path = os.path.join(args.o,os.path.basename(wav))
+        else:
+          out_path = args.o
+        print('Prirezani posnetek shranjen v: %s'%out_path)
+        sf.write(out_path, data[int(lead_trim*rate):int((t_end-trail_trim)*rate)], rate)
       else:
-        out_path = args.o
-      print('Prirezani posnetek shranjen v: %s'%out_path)
-      sf.write(out_path, data[int(leading_trim*rate):int((t_end-trailing_trim)*rate)], rate)
+        shutil.copy2(wav, args.o)
 
     # Plot signal and detected silence
-    if args.v:
-      ax = plt.subplot(211)
-      plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
-        data[:int(t_ini*rate)], 'r')
-      plt.plot( np.linspace(t_ini,t_end-t_fin,
-        len(data[int(t_ini*rate):int((t_end-t_fin)*rate)])),
-        data[int(t_ini*rate):int((t_end-t_fin)*rate)], 'g')
-      plt.plot( np.linspace(t_end-t_fin,t_end,
-        len(data[int((t_end-t_fin)*rate):])),
-        data[int((t_end-t_fin)*rate):], 'r')
-      plt.axvspan(0, .5, facecolor='r', alpha=.3)
-      plt.axvspan(t_end, t_end-.5, facecolor='r', alpha=.3)
-      plt.axvspan(1, t_end-1, facecolor='g', alpha=.3)
-      plt.axvspan(0, leading_trim, facecolor='k', alpha=.1)
-      plt.axvspan(t_end-trailing_trim, t_end, facecolor='k', alpha=.1)
-      plt.axhline(y=.5, color='k', linestyle='--')
-      plt.axhline(y=-.5, color='k', linestyle='--')
-      plt.ylim([-1, 1])
-      plt.xlim(0,t_end)
-      plt.xlabel('Čas [s]')
-      plt.ylabel('Amplituda')
-      ax.set_title('Dodano %.2f s šuma na začetku in %.2f s na koncu posnetka.'%(t_ini_added, t_fin_added))
-      ax2 = plt.subplot(212)
-      if data.ndim > 1:
-        plt.specgram(data[:,0],Fs=rate)
+    ax = plt.subplot(211)
+    plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
+      data[:int(t_ini*rate)], 'r')
+    plt.plot( np.linspace(t_ini,t_end-t_fin,
+      len(data[int(t_ini*rate):int((t_end-t_fin)*rate)])),
+      data[int(t_ini*rate):int((t_end-t_fin)*rate)], 'g')
+    plt.plot( np.linspace(t_end-t_fin,t_end,
+      len(data[int((t_end-t_fin)*rate):])),
+      data[int((t_end-t_fin)*rate):], 'r')
+    plt.axvspan(0, .5, facecolor='r', alpha=.3)
+    plt.axvspan(t_end, t_end-.5, facecolor='r', alpha=.3)
+    plt.axvspan(1, t_end-1, facecolor='g', alpha=.3)
+    plt.axvspan(0, lead_trim, facecolor='k', alpha=.1, hatch='/')
+    plt.axvspan(t_end-trail_trim, t_end, facecolor='k', alpha=.1, hatch='/')
+    plt.axvspan(0, lead_add, facecolor='k', alpha=.1, hatch='.')
+    plt.axvspan(t_end-trail_add, t_end, facecolor='k', alpha=.1, hatch='.')
+    plt.axhline(y=.5, color='k', linestyle='--')
+    plt.axhline(y=-.5, color='k', linestyle='--')
+    plt.ylim([-1, 1])
+    plt.xlim(0,t_end)
+    plt.xlabel('Čas [s]')
+    plt.ylabel('Amplituda')
+    ax.set_title('sprememba na začetku: %.2f s, sprememba na koncu: %.2f s'%(max([-lead_trim, lead_add], key=abs), max([-trail_trim, trail_add], key=abs)))
+    ax2 = plt.subplot(212)
+    if data.ndim > 1:
+      plt.specgram(data[:,0],Fs=rate)
+    else:
+      plt.specgram(data,Fs=rate)
+    plt.xlim(0, t_end)
+    plt.xlabel('Čas [s]')
+    plt.ylabel('Frekvenca [Hz]')
+    ax2.set_title('Spektrogram')
+    plt.tight_layout()
+    if args.o:
+      if os.path.isdir(args.o):
+        fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
       else:
-        plt.specgram(data,Fs=rate)
-      plt.xlim(0, t_end)
-      plt.xlabel('Čas [s]')
-      plt.ylabel('Frekvenca [Hz]')
-      ax2.set_title('Spektrogram')
-      plt.tight_layout()
-      if args.o:
-        if os.path.isdir(args.o):
-          fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
-        else:
-          fig.savefig(os.path.join(os.path.basename(args.o)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+        fig.savefig(os.path.join(os.path.basename(args.o)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+    if args.v:
       plt.show()
+    fig.clf()
 
     tini.append(t_ini)
     tfin.append(t_fin)
