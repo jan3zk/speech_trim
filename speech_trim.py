@@ -257,7 +257,7 @@ def speech_trim(raw_args=None):
       bgrnd_chunk = bgrnd_chunk/bgrnd_all.max_possible_amplitude
       t_end_chunk = len(bgrnd_chunk)/rate
 
-      if t_ini < 0.5:
+      if t_ini < args.p:
         t_rand_ini = random.uniform(0,t_end_chunk-args.p+t_ini)
         if t_rand_ini < 0: t_rand_ini = 0
         bgrnd_chunk_ini = bgrnd_chunk[int(t_rand_ini*rate):int((t_rand_ini+args.p-t_ini)*rate)]
@@ -265,7 +265,7 @@ def speech_trim(raw_args=None):
         lead_add = args.p-t_ini
         print('Premajhen začetni premor. Dodanega %.2f s šuma na začetek posnetka.'%lead_add)
 
-      if t_fin < 0.5:
+      if t_fin < args.p:
         t_rand_fin = random.uniform(0,t_end_chunk-args.p+t_fin)
         if t_rand_fin < 0: t_rand_fin = 0 
         bgrnd_chunk_fin = bgrnd_chunk[int(t_rand_fin*rate):int((t_rand_fin+args.p-t_fin)*rate)]
