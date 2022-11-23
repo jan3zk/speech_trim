@@ -16,7 +16,7 @@ import webrtcvad
 import collections
 import random
 import shutil
-
+import uuid
 
 def read_wave(path):
   """Reads a .wav file.
@@ -76,9 +76,10 @@ def initial_final_pauses(wav, aa, am, ad, at, ac):
   data, rate = sf.read(wav)
   t_end = len(data)/rate
   y, sr = librosa.load(wav, sr=32000)
-  sf.write('tmp.wav', y, sr)
-  audio, sample_rate = read_wave('tmp.wav')
-  os.remove('tmp.wav') 
+  tmp_file = str(uuid.uuid4())+'.wav'
+  sf.write(tmp_file, y, sr)
+  audio, sample_rate = read_wave(tmp_file)
+  os.remove(tmp_file) 
   vad = webrtcvad.Vad(int(aa))
   frames = frame_generator(30, audio, sample_rate)
   frames = list(frames)
@@ -236,13 +237,16 @@ def speech_trim(raw_args=None):
     print('Ocenjen začetni premor: %.1f'%t_ini)
     print('Ocenjen končni premor: %.1f'%t_fin)
     data, rate = sf.read(wav)
-
+    
     if args.z:
       bgrnd = AudioSegment.from_file(wav)
 
       bgrnd_ini = bgrnd[:int(t_ini*1000*0.5)]
       bgrnd_fin = bgrnd[-int(t_fin*1000*0.5):]
-      bgrnda = bgrnd_ini.append(bgrnd_fin, crossfade=min([len(bgrnd_ini)/3, len(bgrnd_fin)/3, 100]))
+      if len(bgrnd_fin)>3:
+        bgrnda = bgrnd_ini.append(bgrnd_fin, crossfade=min([len(bgrnd_ini)/3, len(bgrnd_fin)/3, 100]))
+      else:
+        bgrnda = bgrnd_ini
       bgrnd_all = AudioSegment.empty()
 
       trim_ms = 0
@@ -274,10 +278,13 @@ def speech_trim(raw_args=None):
         print('Premajhen končni premor. Dodanega %.2f s šuma na konec posnetka.'%trail_add)
 
       # Recompute the precise final length on the extended signal
-      sf.write('tmp_mod.wav', data, rate)
-      t_ini, t_fin = initial_final_pauses('tmp_mod.wav', args.a, args.m, args.d, args.t, args.c)
-      os.remove('tmp_mod.wav')
-
+      tmp_mod = str(uuid.uuid4())+'.wav'
+      sf.write(tmp_mod, data, rate)
+      t_ini, t_fin = initial_final_pauses(tmp_mod, args.a, args.m, args.d, args.t, args.c)
+      os.remove(tmp_mod)
+    
+    #t_ini = 1.0 #user defined initial pause
+    #t_fin = 1.0 #user defined final pause
     lead_trim = t_ini-args.p if t_ini-args.p > 0 else 0
     trail_trim = t_fin-args.p if t_fin-args.p > 0 else 0
     if lead_trim < lead_add:
