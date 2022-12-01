@@ -225,9 +225,10 @@ def speech_trim(raw_args=None):
   # ~ bgrnd_all = AudioSegment.empty()
   tini = []
   tfin = []
-  
-  fig = plt.figure()
-    
+
+  if args.v:
+    fig = plt.figure()
+
   for c,wav in enumerate(in_wavs[args.s-1:]):
     lead_add = 0
     trail_add = 0
@@ -316,48 +317,48 @@ def speech_trim(raw_args=None):
       else:
         shutil.copy2(wav, args.o)
 
-    # Plot signal and detected silence
-    ax = plt.subplot(211)
-    plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
-      data[:int(t_ini*rate)], 'r')
-    plt.plot( np.linspace(t_ini,t_end-t_fin,
-      len(data[int(t_ini*rate):int((t_end-t_fin)*rate)])),
-      data[int(t_ini*rate):int((t_end-t_fin)*rate)], 'g')
-    plt.plot( np.linspace(t_end-t_fin,t_end,
-      len(data[int((t_end-t_fin)*rate):])),
-      data[int((t_end-t_fin)*rate):], 'r')
-    plt.axvspan(0, .5, facecolor='r', alpha=.3)
-    plt.axvspan(t_end, t_end-.5, facecolor='r', alpha=.3)
-    plt.axvspan(1, t_end-1, facecolor='g', alpha=.3)
-    plt.axvspan(0, lead_trim, facecolor='k', alpha=.1, hatch='/')
-    plt.axvspan(t_end-trail_trim, t_end, facecolor='k', alpha=.1, hatch='/')
-    plt.axvspan(0, lead_add, facecolor='k', alpha=.1, hatch='.')
-    plt.axvspan(t_end-trail_add, t_end, facecolor='k', alpha=.1, hatch='.')
-    plt.axhline(y=.5, color='k', linestyle='--')
-    plt.axhline(y=-.5, color='k', linestyle='--')
-    plt.ylim([-1, 1])
-    plt.xlim(0,t_end)
-    plt.xlabel('Čas [s]')
-    plt.ylabel('Amplituda')
-    ax.set_title('sprememba na začetku: %.2f s, sprememba na koncu: %.2f s'%(max([-lead_trim, lead_add], key=abs), max([-trail_trim, trail_add], key=abs)))
-    ax2 = plt.subplot(212)
-    if data.ndim > 1:
-      plt.specgram(data[:,0],Fs=rate)
-    else:
-      plt.specgram(data,Fs=rate)
-    plt.xlim(0, t_end)
-    plt.xlabel('Čas [s]')
-    plt.ylabel('Frekvenca [Hz]')
-    ax2.set_title('Spektrogram')
-    plt.tight_layout()
-    if args.o:
-      if os.path.isdir(args.o):
-        fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+    if args.v:
+      # Plot signal and detected silence
+      ax = plt.subplot(211)
+      plt.plot( np.linspace(0,t_ini,len(data[:int(t_ini*rate)])),
+        data[:int(t_ini*rate)], 'r')
+      plt.plot( np.linspace(t_ini,t_end-t_fin,
+        len(data[int(t_ini*rate):int((t_end-t_fin)*rate)])),
+        data[int(t_ini*rate):int((t_end-t_fin)*rate)], 'g')
+      plt.plot( np.linspace(t_end-t_fin,t_end,
+        len(data[int((t_end-t_fin)*rate):])),
+        data[int((t_end-t_fin)*rate):], 'r')
+      plt.axvspan(0, .5, facecolor='r', alpha=.3)
+      plt.axvspan(t_end, t_end-.5, facecolor='r', alpha=.3)
+      plt.axvspan(1, t_end-1, facecolor='g', alpha=.3)
+      plt.axvspan(0, lead_trim, facecolor='k', alpha=.1, hatch='/')
+      plt.axvspan(t_end-trail_trim, t_end, facecolor='k', alpha=.1, hatch='/')
+      plt.axvspan(0, lead_add, facecolor='k', alpha=.1, hatch='.')
+      plt.axvspan(t_end-trail_add, t_end, facecolor='k', alpha=.1, hatch='.')
+      plt.axhline(y=.5, color='k', linestyle='--')
+      plt.axhline(y=-.5, color='k', linestyle='--')
+      plt.ylim([-1, 1])
+      plt.xlim(0,t_end)
+      plt.xlabel('Čas [s]')
+      plt.ylabel('Amplituda')
+      ax.set_title('sprememba na začetku: %.2f s, sprememba na koncu: %.2f s'%(max([-lead_trim, lead_add], key=abs), max([-trail_trim, trail_add], key=abs)))
+      ax2 = plt.subplot(212)
+      if data.ndim > 1:
+        plt.specgram(data[:,0],Fs=rate)
       else:
-        fig.savefig(os.path.join(os.path.basename(args.o)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
-    #if args.v:
-    #  plt.show()
-    fig.clf()
+        plt.specgram(data,Fs=rate)
+      plt.xlim(0, t_end)
+      plt.xlabel('Čas [s]')
+      plt.ylabel('Frekvenca [Hz]')
+      ax2.set_title('Spektrogram')
+      plt.tight_layout()
+      if args.o:
+        if os.path.isdir(args.o):
+          fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+        else:
+          fig.savefig(os.path.join(os.path.basename(args.o)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
+      #plt.show()
+      fig.clf()
 
     tini.append(t_ini)
     tfin.append(t_fin)
