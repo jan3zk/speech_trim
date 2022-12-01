@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-print('Nalaganje programskih knjižnic ...')
+#print('Nalaganje programskih knjižnic ...')
 from glob import glob
 import os, sys
 import argparse
@@ -231,11 +231,12 @@ def speech_trim(raw_args=None):
   for c,wav in enumerate(in_wavs[args.s-1:]):
     lead_add = 0
     trail_add = 0
-    print("\n(%i/%i)"%(c+args.s, len(in_wavs)))
     t_ini, t_fin = initial_final_pauses(wav, args.a, args.m, args.d, args.t, args.c)
-    print('\nVhodni posnetek: %s'%wav)
-    print('Ocenjen začetni premor: %.1f'%t_ini)
-    print('Ocenjen končni premor: %.1f'%t_fin)
+    if args.v:
+      print("\n(%i/%i)"%(c+args.s, len(in_wavs)))
+      print('\nVhodni posnetek: %s'%wav)
+      print('Ocenjen začetni premor: %.1f'%t_ini)
+      print('Ocenjen končni premor: %.1f'%t_fin)
     data, rate = sf.read(wav)
     
     if args.z:
@@ -267,7 +268,8 @@ def speech_trim(raw_args=None):
         bgrnd_chunk_ini = bgrnd_chunk[int(t_rand_ini*rate):int((t_rand_ini+args.p-t_ini)*rate)]
         data = np.concatenate((bgrnd_chunk_ini, data))
         lead_add = args.p-t_ini
-        print('Premajhen začetni premor. Dodanega %.2f s šuma na začetek posnetka.'%lead_add)
+        if args.v:
+          print('Premajhen začetni premor. Dodanega %.2f s šuma na začetek posnetka.'%lead_add)
 
       if t_fin < args.p:
         t_rand_fin = random.uniform(0,t_end_chunk-args.p+t_fin)
@@ -275,7 +277,8 @@ def speech_trim(raw_args=None):
         bgrnd_chunk_fin = bgrnd_chunk[int(t_rand_fin*rate):int((t_rand_fin+args.p-t_fin)*rate)]
         data = np.concatenate((data, bgrnd_chunk_fin))
         trail_add = args.p-t_fin
-        print('Premajhen končni premor. Dodanega %.2f s šuma na konec posnetka.'%trail_add)
+        if args.v:
+          print('Premajhen končni premor. Dodanega %.2f s šuma na konec posnetka.'%trail_add)
 
       # Recompute the precise final length on the extended signal
       tmp_mod = str(uuid.uuid4())+'.wav'
@@ -284,7 +287,7 @@ def speech_trim(raw_args=None):
       os.remove(tmp_mod)
     
     #t_ini = 1.0 #user defined initial pause
-    #t_fin = 1.0 #user defined final pause
+    #t_fin = 1.5 #user defined final pause
     lead_trim = t_ini-args.p if t_ini-args.p > 0 else 0
     trail_trim = t_fin-args.p if t_fin-args.p > 0 else 0
     if lead_trim < lead_add:
@@ -297,9 +300,9 @@ def speech_trim(raw_args=None):
       trail_add = 0
       
     t_end = len(data)/rate
-    
-    print('Dolžina začetnega obreza: %.1f s'%lead_trim)
-    print('Dolžina končnega obreza: %.1f s'%trail_trim)
+    if args.v:
+      print('Dolžina začetnega obreza: %.1f s'%lead_trim)
+      print('Dolžina končnega obreza: %.1f s'%trail_trim)
 
     if args.o:
       if any(np.array([lead_add, trail_add, lead_trim, trail_trim])>0):
@@ -307,7 +310,8 @@ def speech_trim(raw_args=None):
           out_path = os.path.join(args.o,os.path.basename(wav))
         else:
           out_path = args.o
-        print('Prirezani posnetek shranjen v: %s'%out_path)
+        if args.v:
+          print('Prirezani posnetek shranjen v: %s'%out_path)
         sf.write(out_path, data[int(lead_trim*rate):int((t_end-trail_trim)*rate)], rate)
       else:
         shutil.copy2(wav, args.o)
@@ -351,8 +355,8 @@ def speech_trim(raw_args=None):
         fig.savefig(os.path.join(args.o,os.path.basename(wav)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
       else:
         fig.savefig(os.path.join(os.path.basename(args.o)[:-4]+'.jpg'), bbox_inches='tight',format='jpg')
-    if args.v:
-      plt.show()
+    #if args.v:
+    #  plt.show()
     fig.clf()
 
     tini.append(t_ini)
