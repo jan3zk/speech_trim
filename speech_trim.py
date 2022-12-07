@@ -6,7 +6,7 @@ import argparse
 import soundfile as sf
 import librosa
 import numpy as np
-from pydub import AudioSegment,silence
+from pydub import AudioSegment,silence, effects
 import matplotlib.pyplot as plt
 import scipy.signal as sps
 from io import BytesIO
@@ -102,6 +102,7 @@ def initial_final_pauses(wav, aa, am, ad, at, ac):
       t_fin = t_end - t_fini
   # Find precise lenghts of initial and final silence
   speech = AudioSegment.from_file(wav)
+  speech = effects.normalize(speech)
   t_ini_v = silence.detect_leading_silence(speech[t_ini*1000:], silence_threshold=at, chunk_size=ac)
   t_ini = t_ini + t_ini_v/1000
   t_fin_v = silence.detect_leading_silence(speech.reverse()[t_fin*1000:], silence_threshold=at, chunk_size=ac)
@@ -189,7 +190,7 @@ def speech_trim(raw_args=None):
     help = 'Dolžina premora v sekundah.')
   optional.add_argument('-t', 
     type=int,
-    default=-35,
+    default=-40,
     help = 'Prag tišine v dbFS.')
   optional.add_argument('-c', 
     type=int,
@@ -288,7 +289,7 @@ def speech_trim(raw_args=None):
       os.remove(tmp_mod)
     
     #t_ini = 1.0 #user defined initial pause
-    #t_fin = 1.5 #user defined final pause
+    #t_fin = .5 #user defined final pause
     lead_trim = t_ini-args.p if t_ini-args.p > 0 else 0
     trail_trim = t_fin-args.p if t_fin-args.p > 0 else 0
     if lead_trim < lead_add:
